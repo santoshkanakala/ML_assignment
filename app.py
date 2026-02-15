@@ -27,7 +27,7 @@ model_choice = st.sidebar.selectbox(
 
 # Data set upload feature 
 st.subheader("step 1: upload Test Data set")
-uploaded_file = st.file_uploader("Upload 'student-por-test.csv' ", type ="csv")
+uploaded_file = st.file_uploader("Upload 'student-por.csv' ", type ="csv")
 
 #MFeature: Model selection
 
@@ -47,46 +47,61 @@ def get_trained_model(name, X_train, y_train):
 
   model.fit(X_train, y_train)
   return model
-file_name =""
+
+file_name =''
 if uploaded_file is not None:
   file_name = uploaded_file
 else:
-  file_name = "student-por-test.csv"
+  file_name = "student-por.csv"
+try:
+  data = pd.read_csv(file_name, sep=';')
+  if data.shape[1] < 2:
+    data = pd.read_csv(file_name, sep=',')
+except:
+  data = pd.read_csv(file_name)
 
-data = pd.read_csv(file_name)
 st.write("Preview of Test Data:", data.head())
-if 'target' in data.columns:
-  X= data.drop('target', axis = 1)
-  y= data['target']
-  with st.spinner(f" Training {model_choice}.."):
-    model = get_trained_model(model_choice, X, y)
-    y_pred = model.predict(X)
 
+if 'G3' in data.columns:
+  data['target'] = data['G3'].apply(lambda x: 1 if x >= 10 else 0)
+  X = data.drop(['G3', 'target'], axis=1)
+  if 'G1' in X.columns: X = X.drop(['G1', 'G2'], axis=1)
+  y = data['target']
+  le = LabelEncoder()
+  for col in X.select_dtypes(include='object').columns:
+    X[col] = le.fit_transform(X[col])
+  X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+  with st.spinner(f" Training {model_choice}.."):
+    model = get_trained_model(model_choice, X_train, y_train)
+    y_pred = model.predict(X_test)
     if hasattr(model, "predict_proba"):
-      y_prob = model.predict_proba(X)[:, 1]
+      y_prob = model.predict_proba(X_test)[:, 1]
     else:
       y_prob = y_pred
   #Display evaluation metrics
   st.subheader(f"Results for {model_choice}")
   me1,me2, me3, me4, me5, me6 = st.columns(6)
-  me1.metric(f"Accuracy: {accuracy_score(y, y_pred):.4f}")
-  me2.metric(f"AUC: {roc_auc_score(y, y_prob):.4f}")
-  me3.metric(f"Precison : {precision_score(y, y_pred):.4f}")
-  me4.metric(f"Recall: {recall_score(y, y_pred):.4f}")
-  me5.metric(f"F1: {f1_score(y, y_pred):.4f}")
-  me6.metric(f"MCC: {matthews_corrcoef(y, y_pred):.4f}")
+  me1.metric("Accuracy:", f"{accuracy_score(y_test, y_pred):.4f}")
+  try:
+    me2.metric("AUC", f"{roc_auc_score(y_test, y_prob):.4f}")
+  except:
+    me2.metric("AUC", "N/A")
+  me3.metric(f"Precison" ,f"{precision_score(y_test, y_pred):.4f}")
+  me4.metric(f"Recall", f"{recall_score(y_test, y_pred):.4f}")
+  me5.metric(f"F1",f"{f1_score(y_test, y_pred):.4f}")
+  me6.metric(f"MCC", f"{matthews_corrcoef(y_test, y_pred):.4f}")
   #Confusion matrix and report
   st.divider()
   col_left, col_right = st.columns(2)
   with col_left:
     st.write("---Confusion Matrix-----")
-    cm = confusion_matrix(y, y_pred)
+    cm = confusion_matrix(y_test, y_pred)
     fig, ax = plt.subplots()
     sns.heatmap(cm, annot = True, fmt='d', cmap= 'Greens', ax= ax)
     st.pyplot(fig)
   with col_right:
     st.write("---Classification Report -----")
-    report = classification_report(y, y_pred, output_dict = True)
+    report = classification_report(y_test, y_pred, output_dict = True)
     st.table(pd.DataFrame(report).transpose())
 else:
-  st.error("Error: The csv must contain a 'target' column for evaluation.")
+  st.error("Error: The csv must contain a 'G3' column for evaluation.")
